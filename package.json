@@ -1,0 +1,39 @@
+{
+  "name": "eis-engine",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "NODE_OPTIONS=\"--experimental-vm-modules --localstorage-file=.localstorage\" jest",
+    "dev": "nodemon server.js",
+    "test:watch": "NODE_OPTIONS=\"--experimental-vm-modules --localstorage-file=.localstorage\" jest --watch",
+    "test:coverage": "NODE_OPTIONS=\"--experimental-vm-modules --localstorage-file=.localstorage\" jest --coverage"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "@supabase/supabase-js": "^2.105.4",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^8.0.7",
+    "pg": "^8.20.0",
+    "prisma": "^7.8.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2",
+    "nodemon": "^3.1.14",
+    "supertest": "^7.2.2"
+  }
+}
