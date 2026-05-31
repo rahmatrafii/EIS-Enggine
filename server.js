@@ -12,4 +12,4 @@ startRetentionCron();
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
-
+// Hot reload trigger for environment update
