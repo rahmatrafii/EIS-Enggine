@@ -243,7 +243,7 @@ export const submitRetentionQuiz = async (token, answersPayload) => {
 
     // 5. Lakukan logika koreksi array answersPayload yang dikirim user
     let correctCount = 0;
-    const answerEntries = answersPayload.map(userAns => {
+    const returnedAnswers = answersPayload.map(userAns => {
       const dbQuestion = quiz.questions.find(q => q.id === userAns.questionId);
       const isCorrect = dbQuestion && (dbQuestion.correctOption === userAns.chosenOption);
       
@@ -254,14 +254,15 @@ export const submitRetentionQuiz = async (token, answersPayload) => {
       return {
         questionId: userAns.questionId,
         chosenOption: userAns.chosenOption,
-        isCorrect: !!isCorrect
+        isCorrect: !!isCorrect,
+        correctOption: dbQuestion ? dbQuestion.correctOption : null
       };
     });
 
     const finalScore = Math.round((correctCount / totalQuestions) * 100);
 
     // 6. Operasi multi-langkah transaksi
-    const result = await prisma.$transaction(async (tx) => {
+    const attemptResult = await prisma.$transaction(async (tx) => {
       // 1. Rekam jejak upaya (Attempt)
       const attempt = await tx.userQuizAttempt.create({
         data: {
@@ -276,8 +277,10 @@ export const submitRetentionQuiz = async (token, answersPayload) => {
       });
 
       // 2. Rekam massal detail soal
-      const detailedAnswersData = answerEntries.map(ans => ({
-        ...ans,
+      const detailedAnswersData = returnedAnswers.map(ans => ({
+        questionId: ans.questionId,
+        chosenOption: ans.chosenOption,
+        isCorrect: ans.isCorrect,
         attemptId: attempt.id
       }));
       await tx.userQuizAnswer.createMany({ data: detailedAnswersData });
@@ -296,7 +299,10 @@ export const submitRetentionQuiz = async (token, answersPayload) => {
     // 7. Trigger recalculateEis(userId, sessionId) setelah semua tersimpan (fire-and-forget)
     recalculateEis(userId, sessionId).catch(console.error);
 
-    return result;
+    return {
+      attempt: attemptResult,
+      answers: returnedAnswers
+    };
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new AppError(500, 'INTERNAL_ERROR', `Terjadi kesalahan sistem saat mensubmit kuis retensi: ${error.message}`);

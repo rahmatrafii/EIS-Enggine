@@ -113,15 +113,18 @@ Data kuis diambil berdasarkan kategori usia pengunjung yang diverifikasi dari to
 
 ```prisma
 model Quiz {
-  id          Int          @id @default(autoincrement())
-  title       String       @db.VarChar(100)
-  quizType    QuizType     @map("quiz_type")
-  scope       QuizScope    @default(GLOBAL)
-  ageCategory AgeCategory  @map("age_category")
-  exhibitId   Int?         @map("exhibit_id")
+  id          Int         @id @default(autoincrement())
+  exhibitId   Int?        @map("exhibit_id")
+  scope       QuizScope   @default(GLOBAL)
+  title       String      @db.VarChar(150)
+  quizType    QuizType    @map("quiz_type")
+  ageCategory AgeCategory @map("age_category")
+  createdAt   DateTime    @default(now()) @map("created_at")
 
-  questions   Question[]
-  
+  exhibit      Exhibit?          @relation(fields: [exhibitId], references: [id], onDelete: SetNull)
+  questions    Question[]
+  quizAttempts UserQuizAttempt[]
+
   @@map("quizzes")
 }
 
@@ -129,13 +132,17 @@ model Question {
   id            Int      @id @default(autoincrement())
   quizId        Int      @map("quiz_id")
   questionText  String   @map("question_text") @db.Text
-  optionA       String   @map("option_a") @db.VarChar(100)
-  optionB       String   @map("option_b") @db.VarChar(100)
-  optionC       String   @map("option_c") @db.VarChar(100)
-  optionD       String   @map("option_d") @db.VarChar(100)
-  correctOption String   @map("correct_option") @db.VarChar(1) // DI-EXCLUDE SAAT FETCH
+  optionA       String   @map("option_a") @db.Text
+  optionB       String   @map("option_b") @db.Text
+  optionC       String   @map("option_c") @db.Text
+  optionD       String   @map("option_d") @db.Text
+  correctOption String   @map("correct_option") @db.Char(1)
   points        Int      @default(10)
-  
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  quiz    Quiz              @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  answers UserQuizAnswer[]
+
   @@map("questions")
 }
 ```

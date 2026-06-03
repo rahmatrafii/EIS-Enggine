@@ -151,31 +151,34 @@ Proses submit kuis retensi merekam data upaya pada tabel `user_quiz_attempts` da
 
 ```prisma
 model UserQuizAttempt {
-  id             Int              @id @default(autoincrement())
-  userId         Int              @map("user_id")
-  sessionId      Int              @map("session_id")
-  quizId         Int              @map("quiz_id")
-  totalQuestions Int              @map("total_questions")
-  correctAnswers Int              @map("correct_answers")
-  finalScore     Int              @map("final_score")
-  completedAt    DateTime         @default(now()) @map("completed_at")
+  id             Int       @id @default(autoincrement())
+  userId         Int       @map("user_id")
+  sessionId      Int       @map("session_id")
+  quizId         Int       @map("quiz_id")
+  totalQuestions Int       @map("total_questions")
+  correctAnswers Int       @default(0) @map("correct_answers")
+  finalScore     Int       @default(0) @map("final_score")
+  startedAt      DateTime  @default(now()) @map("started_at")
+  completedAt    DateTime? @map("completed_at")
 
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  session        VisitSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  quiz           Quiz             @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  answers        UserQuizAnswer[]
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session VisitSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  quiz    Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  answers UserQuizAnswer[]
 
   @@map("user_quiz_attempts")
 }
 
 model UserQuizAnswer {
-  id           Int             @id @default(autoincrement())
-  attemptId    Int             @map("attempt_id")
-  questionId   Int             @map("question_id")
-  chosenOption String          @map("chosen_option") @db.VarChar(1)
-  isCorrect    Boolean         @map("is_correct")
+  id            Int      @id @default(autoincrement())
+  attemptId     Int      @map("attempt_id")
+  questionId    Int      @map("question_id")
+  chosenOption  String   @map("chosen_option") @db.Char(1)
+  isCorrect     Boolean  @map("is_correct")
+  answeredAt    DateTime @default(now()) @map("answered_at")
 
-  attempt      UserQuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  attempt  UserQuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@map("user_quiz_answers")
 }
@@ -203,21 +206,37 @@ model UserQuizAnswer {
 
 ## 📥 Format Response Sukses (201 Created)
 
-Bila pengiriman jawaban kuis retensi sukses direkam, sistem mengembalikan status **`212 Created`**:
+Bila pengiriman jawaban kuis retensi sukses direkam, sistem mengembalikan status **`201 Created`**:
 
 ```json
 {
   "success": true,
   "message": "Jawaban kuis retensi berhasil disimpan",
   "data": {
-    "id": 1,
-    "userId": 1,
-    "sessionId": 1,
-    "quizId": 1,
-    "totalQuestions": 1,
-    "correctAnswers": 1,
-    "finalScore": 100,
-    "completedAt": "2026-05-30T12:05:14.000Z"
+    "attempt": {
+      "id": 1,
+      "userId": 1,
+      "sessionId": 1,
+      "quizId": 1,
+      "totalQuestions": 2,
+      "correctAnswers": 2,
+      "finalScore": 100,
+      "completedAt": "2026-06-01T08:15:00.000Z"
+    },
+    "answers": [
+      {
+        "questionId": 1,
+        "chosenOption": "A",
+        "isCorrect": true,
+        "correctOption": "A"
+      },
+      {
+        "questionId": 2,
+        "chosenOption": "B",
+        "isCorrect": true,
+        "correctOption": "B"
+      }
+    ]
   }
 }
 ```

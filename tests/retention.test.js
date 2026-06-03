@@ -279,7 +279,7 @@ describe('Retention API — POST /api/v1/retention/submit/:token', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(res.body.data.finalScore).toBe(100);
+    expect(res.body.data.attempt.finalScore).toBe(100);
   });
 
   it('should return 400 when token is invalid or expired (RETENTION_EXPIRED)', async () => {

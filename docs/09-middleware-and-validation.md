@@ -25,6 +25,41 @@ export const validate = (schema) => (req, res, next) => {
   req.body = result.data; 
   next();
 };
+
+export const validateQuery = (schema) => (req, res, next) => {
+  const result = schema.safeParse(req.query);
+  
+  if (!result.success) {
+    const formattedError = result.error.errors
+      .map(err => `${err.path.join('.')}: ${err.message}`)
+      .join(', ');
+      
+    return next(new AppError(400, 'VALIDATION_ERROR', formattedError));
+  }
+  
+  // Express 5 req.query adalah read-only getter — gunakan Object.defineProperty untuk override
+  Object.defineProperty(req, 'query', {
+    value: result.data,
+    writable: true,
+    configurable: true,
+  });
+  next();
+};
+
+export const validateParams = (schema) => (req, res, next) => {
+  const result = schema.safeParse(req.params);
+  
+  if (!result.success) {
+    const formattedError = result.error.errors
+      .map(err => `${err.path.join('.')}: ${err.message}`)
+      .join(', ');
+      
+    return next(new AppError(400, 'VALIDATION_ERROR', formattedError));
+  }
+  
+  req.params = result.data;
+  next();
+};
 ```
 
 ## Daftar Zod Schema (Wajib dibuat dalam src/validators/)

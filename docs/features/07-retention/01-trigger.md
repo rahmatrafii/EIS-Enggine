@@ -157,23 +157,13 @@ Jika eksekusi trigger retensi berhasil dijalankan, sistem mengembalikan status *
 
 ## ⚠️ Penanganan Error & Pengecualian
 
-### 1. HTTP 401 Unauthorized — `UNAUTHORIZED` (Header Hilang)
-Terjadi jika request dikirimkan tanpa menyertakan header otorisasi custom `x-cron-secret`.
+### 1. HTTP 401 Unauthorized — `UNAUTHORIZED` (Header Hilang / Kunci Salah)
+Terjadi jika request dikirimkan tanpa menyertakan header otorisasi custom `x-cron-secret` atau nilai kunci yang dikirimkan keliru.
 ```json
 {
   "success": false,
   "code": "UNAUTHORIZED",
-  "message": "Token akses cron tidak ditemukan"
-}
-```
-
-### 2. HTTP 401 Unauthorized — `UNAUTHORIZED` (Kunci Salah)
-Terjadi jika nilai header `x-cron-secret` yang dikirimkan keliru dan tidak sesuai dengan kunci rahasia server.
-```json
-{
-  "success": false,
-  "code": "UNAUTHORIZED",
-  "message": "Token akses cron tidak valid"
+  "message": "Otorisasi scheduler ditolak"
 }
 ```
 
