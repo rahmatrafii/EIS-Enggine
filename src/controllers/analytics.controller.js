@@ -40,4 +40,29 @@ export const getDashboardAnalytics = async (req, res, next) => {
   }
 };
 
+export const getVisitorList = async (req, res, next) => {
+  try {
+    const { date_from, date_to, age_category } = req.query;
+
+    const result = await analyticsService.getVisitorList({ date_from, date_to, age_category });
+
+    return sendSuccess(res, 200, result, 'Daftar pengunjung berhasil diambil');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getExhibitTrend = async (req, res, next) => {
+  try {
+    const { exhibit_id } = req.params;
+
+    const result = await analyticsService.getExhibitTrend(exhibit_id);
+
+    return sendSuccess(res, 200, result, 'Data tren kunjungan kandang berhasil diambil');
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 

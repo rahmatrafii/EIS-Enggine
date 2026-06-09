@@ -9,7 +9,12 @@ export const createExhibitSchema = z.object({
     .string({ required_error: 'Nama zona wajib diisi' })
     .min(1, 'Nama zona wajib diisi')
     .max(50, 'Nama zona maksimal 50 karakter'),
-  description: z.string().optional(),
+  description: z.string().optional().nullable(),
+  imageUrl: z
+    .string()
+    .url('imageUrl harus berupa URL valid')
+    .optional()
+    .nullable(),
 });
 
 export const getExhibitsQuerySchema = z.object({
@@ -29,6 +34,11 @@ export const getExhibitsQuerySchema = z.object({
 export const deleteExhibitSchema = z.object({
   exhibit_id: z.coerce.number().int().positive(),
 });
+
+export const getExhibitDetailSchema = z.object({
+  exhibit_id: z.coerce.number().int().positive(),
+});
+
 
 export const createContentSchema = z.object({
   exhibitId: z
@@ -53,9 +63,9 @@ export const createMediaSchema = z.object({
     .number({ required_error: 'exhibitId wajib diisi' })
     .int('exhibitId harus berupa integer')
     .positive('exhibitId harus berupa angka positif'),
-  ageCategory: z.enum(['CHILD', 'TEEN', 'ADULT'], {
+  ageCategory: z.enum(['CHILD', 'TEEN', 'ADULT', 'ALL'], {
     required_error: 'ageCategory wajib diisi',
-    invalid_type_error: 'ageCategory harus berupa CHILD, TEEN, atau ADULT',
+    invalid_type_error: 'ageCategory harus berupa CHILD, TEEN, ADULT, atau ALL',
   }),
   mediaType: z.enum(['AUDIO', 'VIDEO', 'IMAGE_INFOGRAPHIC', 'INTERACTIVE_LAB'], {
     required_error: 'mediaType wajib diisi',
@@ -135,6 +145,225 @@ export const createQuizSchema = z
       });
     }
   });
+
+export const getQuizDetailSchema = z.object({
+  quiz_id: z.coerce.number().int().positive(),
+});
+
+export const updateExhibitSchema = z.object({
+  name: z
+    .string({ required_error: 'Nama kandang wajib diisi' })
+    .min(1, 'Nama kandang wajib diisi')
+    .max(100, 'Nama kandang maksimal 100 karakter'),
+  zoneName: z
+    .string({ required_error: 'Nama zona wajib diisi' })
+    .min(1, 'Nama zona wajib diisi')
+    .max(50, 'Nama zona maksimal 50 karakter'),
+  description: z.string().optional().nullable(),
+  imageUrl: z
+    .string()
+    .url('imageUrl harus berupa URL valid')
+    .optional()
+    .nullable(),
+});
+
+export const deleteContentSchema = z.object({
+  id: z.coerce.number().int().positive('ID konten harus berupa angka bulat positif'),
+});
+
+export const deleteMediaSchema = z.object({
+  id: z.coerce.number().int().positive('ID media harus berupa angka bulat positif'),
+});
+
+export const updateQuizSchema = createQuizSchema;
+
+export const deleteQuizSchema = z.object({
+  quiz_id: z.coerce.number().int().positive('quiz_id harus berupa angka bulat positif'),
+});
+
+const targetSchema = z.object({
+  imageUrl: z.string({ required_error: 'target.imageUrl wajib diisi' }).url('target.imageUrl harus berupa URL valid'),
+  label: z.string({ required_error: 'target.label wajib diisi' }).min(1, 'target.label tidak boleh kosong'),
+});
+
+const dragDropItemSchema = z.object({
+  id: z.union([z.string(), z.number()], { required_error: 'item.id wajib diisi' }),
+  imageUrl: z.string({ required_error: 'item.imageUrl wajib diisi' }).url('item.imageUrl harus berupa URL valid'),
+  label: z.string({ required_error: 'item.label wajib diisi' }).min(1, 'item.label tidak boleh kosong'),
+  isCorrect: z.boolean({ required_error: 'item.isCorrect wajib diisi' }),
+});
+
+const matchingPairSchema = z.object({
+  id: z.union([z.string(), z.number()], { required_error: 'pair.id wajib diisi' }),
+  threat: z.string({ required_error: 'pair.threat wajib diisi' }).min(1, 'pair.threat tidak boleh kosong'),
+  solution: z.string({ required_error: 'pair.solution wajib diisi' }).min(1, 'pair.solution tidak boleh kosong'),
+});
+
+const pictureChoiceOptionSchema = z.object({
+  id: z.union([z.string(), z.number()], { required_error: 'option.id wajib diisi' }),
+  imageUrl: z.string({ required_error: 'option.imageUrl wajib diisi' }).url('option.imageUrl harus berupa URL valid'),
+  label: z.string({ required_error: 'option.label wajib diisi' }).min(1, 'option.label tidak boleh kosong'),
+  isCorrect: z.boolean({ required_error: 'option.isCorrect wajib diisi' }),
+});
+
+export const createLabGameSchema = z
+  .object({
+    exhibitId: z
+      .number({ required_error: 'exhibitId wajib diisi' })
+      .int('exhibitId harus berupa integer')
+      .positive('exhibitId harus berupa angka positif'),
+    ageCategory: z.enum(['CHILD', 'TEEN', 'ADULT', 'ALL'], {
+      required_error: 'ageCategory wajib diisi',
+      invalid_type_error: 'ageCategory harus berupa CHILD, TEEN, ADULT, atau ALL',
+    }),
+    gameType: z.enum(['DRAG_DROP', 'MATCHING', 'PICTURE_CHOICE'], {
+      required_error: 'gameType wajib diisi',
+      invalid_type_error: 'gameType harus berupa DRAG_DROP, MATCHING, atau PICTURE_CHOICE',
+    }),
+    title: z
+      .string({ required_error: 'title wajib diisi' })
+      .min(1, 'title wajib diisi')
+      .max(150, 'title maksimal 150 karakter'),
+    gameConfig: z.any({ required_error: 'gameConfig wajib diisi' }),
+    isActive: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const { gameType, gameConfig } = data;
+
+    if (!gameConfig || typeof gameConfig !== 'object') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'gameConfig harus berupa objek valid',
+        path: ['gameConfig'],
+      });
+      return;
+    }
+
+    if (gameType === 'DRAG_DROP') {
+      // Validate target
+      if (!gameConfig.target || typeof gameConfig.target !== 'object') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'target wajib berupa objek valid',
+          path: ['gameConfig', 'target'],
+        });
+      } else {
+        const targetResult = targetSchema.safeParse(gameConfig.target);
+        if (!targetResult.success) {
+          targetResult.error.issues.forEach((issue) => {
+            ctx.addIssue({
+              ...issue,
+              path: ['gameConfig', 'target', ...issue.path],
+            });
+          });
+        }
+      }
+
+      // Validate items
+      if (!Array.isArray(gameConfig.items)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'items harus berupa array',
+          path: ['gameConfig', 'items'],
+        });
+      } else {
+        const itemsResult = z
+          .array(dragDropItemSchema)
+          .min(1, 'items minimal berisi 1 item')
+          .safeParse(gameConfig.items);
+        if (!itemsResult.success) {
+          itemsResult.error.issues.forEach((issue) => {
+            ctx.addIssue({
+              ...issue,
+              path: ['gameConfig', 'items', ...issue.path],
+            });
+          });
+        } else {
+          const hasCorrect = gameConfig.items.some((item) => item.isCorrect === true);
+          if (!hasCorrect) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: 'Minimal satu item harus bertanda isCorrect: true',
+              path: ['gameConfig', 'items'],
+            });
+          }
+        }
+      }
+    } else if (gameType === 'MATCHING') {
+      // Validate pairs
+      if (!Array.isArray(gameConfig.pairs)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'pairs harus berupa array',
+          path: ['gameConfig', 'pairs'],
+        });
+      } else {
+        const pairsResult = z
+          .array(matchingPairSchema)
+          .min(1, 'pairs minimal berisi 1 item')
+          .safeParse(gameConfig.pairs);
+        if (!pairsResult.success) {
+          pairsResult.error.issues.forEach((issue) => {
+            ctx.addIssue({
+              ...issue,
+              path: ['gameConfig', 'pairs', ...issue.path],
+            });
+          });
+        }
+      }
+    } else if (gameType === 'PICTURE_CHOICE') {
+      // Validate question
+      if (typeof gameConfig.question !== 'string' || gameConfig.question.trim().length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'question wajib berupa string dan tidak boleh kosong',
+          path: ['gameConfig', 'question'],
+        });
+      }
+
+      // Validate options
+      if (!Array.isArray(gameConfig.options)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'options harus berupa array',
+          path: ['gameConfig', 'options'],
+        });
+      } else {
+        const optionsResult = z
+          .array(pictureChoiceOptionSchema)
+          .min(1, 'options minimal berisi 1 item')
+          .safeParse(gameConfig.options);
+        if (!optionsResult.success) {
+          optionsResult.error.issues.forEach((issue) => {
+            ctx.addIssue({
+              ...issue,
+              path: ['gameConfig', 'options', ...issue.path],
+            });
+          });
+        } else {
+          const hasCorrect = gameConfig.options.some((opt) => opt.isCorrect === true);
+          if (!hasCorrect) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: 'Minimal satu opsi harus bertanda isCorrect: true',
+              path: ['gameConfig', 'options'],
+            });
+          }
+        }
+      }
+    }
+  });
+
+export const updateLabGameSchema = createLabGameSchema;
+
+export const getLabGameParamsSchema = z.object({
+  game_id: z.coerce.number().int().positive('game_id harus berupa angka bulat positif'),
+});
+
+export const getLabGamesQuerySchema = z.object({
+  exhibit_id: z.coerce.number().int().positive('exhibit_id harus berupa angka bulat positif'),
+});
+
 
 
 

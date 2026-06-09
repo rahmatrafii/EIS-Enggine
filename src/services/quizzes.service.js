@@ -1,6 +1,21 @@
 import prisma from '../config/prisma.js';
 import { AppError } from '../utils/response.js';
 import { recalculateEis } from './eis.service.js';
+import { generateRetentionToken } from '../utils/tokenUrl.js';
+
+/**
+ * Helper to shuffle an array using Fisher-Yates algorithm.
+ * @param {Array} array 
+ * @returns {Array} Shuffled array
+ */
+const shuffleArray = (array) => {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+};
 
 /**
  * Mengambil satu kuis yang sesuai dengan kriteria sesi, tipe, dan usia pengguna.
@@ -72,6 +87,18 @@ export const fetchQuiz = async (userId, sessionId, type, exhibitId) => {
       throw new AppError(404, 'QUIZ_NOT_FOUND', 'Kuis tidak ditemukan untuk kriteria yang diberikan');
     }
 
+    // Mengacak dan membatasi soal berdasarkan kategori usia (Anak: 5, Remaja: 8, Dewasa: 10)
+    if (quiz.questions && quiz.questions.length > 0) {
+      let limit = 10;
+      if (quiz.quizType === 'PRE_ZOO' || quiz.quizType === 'POST_ZOO') {
+        const ageCategory = session.user.ageCategory;
+        if (ageCategory === 'CHILD') limit = 5;
+        else if (ageCategory === 'TEEN') limit = 8;
+        else if (ageCategory === 'ADULT') limit = 10;
+      }
+      quiz.questions = shuffleArray(quiz.questions).slice(0, limit);
+    }
+
     return quiz;
   } catch (error) {
     if (error instanceof AppError) throw error;
@@ -138,11 +165,12 @@ export const submitQuiz = async (userId, sessionId, quizId, answersPayload) => {
       return {
         questionId: userAns.questionId,
         chosenOption: userAns.chosenOption,
-        isCorrect: !!isCorrect
+        isCorrect: !!isCorrect,
+        correctOption: dbQuestion ? dbQuestion.correctOption : null
       };
     });
 
-    const totalQuestions = quiz.questions.length;
+    const totalQuestions = answersPayload.length;
     const finalScore = Math.round((correctCount / totalQuestions) * 100);
 
     // Operasi multi-langkah transaksi 
@@ -153,7 +181,7 @@ export const submitQuiz = async (userId, sessionId, quizId, answersPayload) => {
           userId,
           sessionId,
           quizId,
-          totalQuestions: quiz.questions.length,
+          totalQuestions,
           correctAnswers: correctCount,
           finalScore,
           completedAt: new Date()
@@ -162,7 +190,9 @@ export const submitQuiz = async (userId, sessionId, quizId, answersPayload) => {
 
       // 2. Rekam massal detail soal
       const detailedAnswersData = answerEntries.map(ans => ({
-        ...ans,
+        questionId: ans.questionId,
+        chosenOption: ans.chosenOption,
+        isCorrect: ans.isCorrect,
         attemptId: attempt.id
       }));
       await tx.userQuizAnswer.createMany({ data: detailedAnswersData });
@@ -176,7 +206,10 @@ export const submitQuiz = async (userId, sessionId, quizId, answersPayload) => {
        recalculateEis(userId, sessionId).catch(console.error);
     }
 
-    return result;
+    return {
+      ...result,
+      answers: answerEntries
+    };
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new AppError(500, 'INTERNAL_ERROR', 'Terjadi kesalahan sistem saat mensubmit kuis');
@@ -216,12 +249,16 @@ export const getQuizResult = async (userId, sessionId) => {
 
     let preZooScore = 0;
     let postZooScore = 0;
+    let hasPreZoo = false;
+    let hasPostZoo = false;
 
     for (const attempt of attempts) {
       if (attempt.quiz.quizType === 'PRE_ZOO') {
         preZooScore = attempt.finalScore;
+        hasPreZoo = true;
       } else if (attempt.quiz.quizType === 'POST_ZOO') {
         postZooScore = attempt.finalScore;
+        hasPostZoo = true;
       }
     }
 
@@ -233,7 +270,9 @@ export const getQuizResult = async (userId, sessionId) => {
     return {
       preZooScore,
       postZooScore,
-      knowledgeGain
+      knowledgeGain,
+      hasPreZoo,
+      hasPostZoo
     };
   } catch (error) {
     if (error instanceof AppError) throw error;
@@ -264,7 +303,54 @@ export const getRetentionStatus = async (userId) => {
       }
     });
 
-    return schedules;
+    const result = [];
+    for (const schedule of schedules) {
+      let score = null;
+      let token = null;
+      let completedAt = null;
+
+      if (schedule.status === 'COMPLETED') {
+        const attempt = await prisma.userQuizAttempt.findFirst({
+          where: {
+            userId: schedule.userId,
+            sessionId: schedule.sessionId,
+            quiz: {
+              quizType: schedule.quizType
+            }
+          },
+          select: {
+            finalScore: true,
+            completedAt: true
+          }
+        });
+        if (attempt) {
+          score = attempt.finalScore;
+          completedAt = attempt.completedAt;
+        }
+      }
+
+      if (schedule.status === 'SENT') {
+        const isExpired = schedule.sentAt && (new Date() - new Date(schedule.sentAt) > 24 * 60 * 60 * 1000);
+        if (isExpired) {
+          await prisma.retentionSchedule.update({
+            where: { id: schedule.id },
+            data: { status: 'EXPIRED' }
+          });
+          schedule.status = 'EXPIRED';
+        } else {
+          token = generateRetentionToken(userId, schedule.sessionId, schedule.quizType);
+        }
+      }
+
+      result.push({
+        ...schedule,
+        score,
+        token,
+        completedAt
+      });
+    }
+
+    return result;
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new AppError(500, 'INTERNAL_ERROR', 'Terjadi kesalahan sistem saat mengambil status retensi');

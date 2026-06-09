@@ -17,17 +17,33 @@ jest.unstable_mockModule('../src/config/prisma.js', () => ({
       findUnique: jest.fn(),
       upsert: jest.fn(),
       findMany: jest.fn(),
+      delete: jest.fn(),
     },
     exhibitMedia: {
       create: jest.fn(),
       findMany: jest.fn(),
+      findUnique: jest.fn(),
+      delete: jest.fn(),
     },
     quiz: {
       create: jest.fn(),
       findFirst: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
     },
     question: {
       createMany: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    interaction: {
+      count: jest.fn(),
+      aggregate: jest.fn(),
+      findMany: jest.fn(),
+    },
+    eisScore: {
+      aggregate: jest.fn(),
     },
     $transaction: jest.fn(),
   },
@@ -242,6 +258,31 @@ describe('Admin API — GET /api/v1/admin/exhibits', () => {
     expect(exhibitData.content_status.TEEN).toEqual({ text: true, media: false });
     expect(exhibitData.content_status.ADULT).toEqual({ text: true, media: true });
     expect(prisma.exhibit.findMany).toHaveBeenCalled();
+  });
+
+  it('should return 200 and correctly treat ALL age category as active for CHILD, TEEN, and ADULT in list view', async () => {
+    const mockExhibitWithAll = {
+      ...mockExhibit,
+      learningContent: [
+        { ageCategory: 'ALL' },
+      ],
+      media: [
+        { ageCategory: 'ALL' },
+      ],
+    };
+    prisma.exhibit.findMany.mockResolvedValue([mockExhibitWithAll]);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .get('/api/v1/admin/exhibits')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    const exhibitData = res.body.data[0];
+    expect(exhibitData.content_status.CHILD).toEqual({ text: true, media: true });
+    expect(exhibitData.content_status.TEEN).toEqual({ text: true, media: true });
+    expect(exhibitData.content_status.ADULT).toEqual({ text: true, media: true });
   });
 
   it('should return 200 and filtered exhibits when is_active=true query param is provided', async () => {
@@ -512,6 +553,21 @@ describe('Admin API — POST /api/v1/admin/media', () => {
     expect(prisma.exhibitMedia.create).toHaveBeenCalled();
   });
 
+  it('should return 201 when media with ageCategory ALL is added successfully', async () => {
+    prisma.exhibit.findUnique.mockResolvedValue(mockExhibit);
+    prisma.exhibitMedia.create.mockResolvedValue({ ...mockMedia, ageCategory: 'ALL' });
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .post('/api/v1/admin/media')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ ...validCreateMediaBody, ageCategory: 'ALL' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.ageCategory).toBe('ALL');
+  });
+
   it('should return 404 when exhibit does not exist or is not active', async () => {
     prisma.exhibit.findUnique.mockResolvedValue(null);
 
@@ -751,3 +807,611 @@ describe('Admin API — POST /api/v1/admin/quizzes', () => {
     expect(res.body.code).toBe('UNAUTHORIZED');
   });
 });
+
+// ─── GET /api/v1/admin/exhibits/:exhibit_id ────────────────────────────────────
+describe('Admin API — GET /api/v1/admin/exhibits/:exhibit_id', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('should return 200 and exhibit detail when id is valid and exists', async () => {
+    prisma.exhibit.findUnique.mockResolvedValue(mockExhibit);
+    prisma.interaction.count.mockResolvedValue(10);
+    prisma.interaction.aggregate.mockResolvedValue({ _avg: { durationSeconds: 600 } });
+    prisma.interaction.findMany.mockResolvedValue([
+      { sessionId: 'session-1', clickedAudio: true, clickedVideo: false, clickedVisual: false, clickedInteractive: false },
+    ]);
+    prisma.eisScore.aggregate.mockResolvedValue({ _avg: { knowledgeGainScore: 40 } });
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .get('/api/v1/admin/exhibits/3')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.id).toBe(3);
+    expect(res.body.data.name).toBe(mockExhibit.name);
+    expect(res.body.data.stats.totalVisitors).toBe(10);
+    expect(res.body.data.stats.avgDurationMinutes).toBe(10);
+    expect(res.body.data.stats.favoriteMedia).toBe('Audio');
+    expect(res.body.data.stats.knowledgeGainPercent).toBe(40);
+    expect(prisma.exhibit.findUnique).toHaveBeenCalledWith({
+      where: { id: 3 },
+      include: { learningContent: true, media: true },
+    });
+  });
+
+  it('should return 200 and correctly treat ALL age category as active for CHILD, TEEN, and ADULT in detail view', async () => {
+    const mockExhibitWithAll = {
+      ...mockExhibit,
+      learningContent: [
+        { ageCategory: 'ALL' },
+      ],
+      media: [
+        { ageCategory: 'ALL' },
+      ],
+    };
+    prisma.exhibit.findUnique.mockResolvedValue(mockExhibitWithAll);
+    prisma.interaction.count.mockResolvedValue(10);
+    prisma.interaction.aggregate.mockResolvedValue({ _avg: { durationSeconds: 600 } });
+    prisma.interaction.findMany.mockResolvedValue([]);
+    prisma.eisScore.aggregate.mockResolvedValue({ _avg: { knowledgeGainScore: 40 } });
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .get('/api/v1/admin/exhibits/3')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.content_status.CHILD).toEqual({ text: true, media: true });
+    expect(res.body.data.content_status.TEEN).toEqual({ text: true, media: true });
+    expect(res.body.data.content_status.ADULT).toEqual({ text: true, media: true });
+  });
+
+  it('should return 404 when exhibit id does not exist', async () => {
+    prisma.exhibit.findUnique.mockResolvedValue(null);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .get('/api/v1/admin/exhibits/999')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('EXHIBIT_NOT_FOUND');
+  });
+
+  it('should return 400 when exhibit id is invalid', async () => {
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .get('/api/v1/admin/exhibits/notanumber')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('should return 403 when visitor tries to get exhibit detail', async () => {
+    const token = generateTestToken(1, 'VISITOR');
+    const res = await request(app)
+      .get('/api/v1/admin/exhibits/3')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+});
+
+// ─── GET /api/v1/admin/quizzes ────────────────────────────────────────────────
+describe('Admin API — GET /api/v1/admin/quizzes', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('should return 200 and list of quizzes', async () => {
+    const mockQuizWithQuestions = {
+      ...mockQuiz,
+      exhibit: { name: 'Harimau Sumatra' },
+      questions: [
+        {
+          id: 1,
+          quizId: mockQuiz.id,
+          questionText: 'Test?',
+          optionA: 'A',
+          optionB: 'B',
+          optionC: 'C',
+          optionD: 'D',
+          correctOption: 'A',
+          points: 10,
+        }
+      ]
+    };
+    prisma.quiz.findMany.mockResolvedValue([mockQuizWithQuestions]);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .get('/api/v1/admin/quizzes')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data[0].title).toBe(mockQuiz.title);
+    expect(res.body.data[0].questions[0].questionText).toBe('Test?');
+    expect(prisma.quiz.findMany).toHaveBeenCalled();
+  });
+
+  it('should return 403 when visitor tries to access', async () => {
+    const token = generateTestToken(1, 'VISITOR');
+    const res = await request(app)
+      .get('/api/v1/admin/quizzes')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ─── GET /api/v1/admin/quizzes/:quiz_id ────────────────────────────────────────
+describe('Admin API — GET /api/v1/admin/quizzes/:quiz_id', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('should return 200 and quiz detail when id is valid', async () => {
+    const mockQuizWithQuestions = {
+      ...mockQuiz,
+      id: 12,
+      exhibit: null,
+      questions: [
+        {
+          id: 5,
+          quizId: 12,
+          questionText: 'Sebutkan?',
+          optionA: 'A',
+          optionB: 'B',
+          optionC: 'C',
+          optionD: 'D',
+          correctOption: 'B',
+          points: 10,
+        }
+      ]
+    };
+    prisma.quiz.findUnique.mockResolvedValue(mockQuizWithQuestions);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .get('/api/v1/admin/quizzes/12')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.id).toBe(12);
+    expect(res.body.data.questions[0].correctOption).toBe('B');
+    expect(prisma.quiz.findUnique).toHaveBeenCalledWith({
+      where: { id: 12 },
+      include: {
+        exhibit: { select: { name: true } },
+        questions: true,
+      }
+    });
+  });
+
+  it('should return 404 when quiz id does not exist', async () => {
+    prisma.quiz.findUnique.mockResolvedValue(null);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .get('/api/v1/admin/quizzes/999')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('should return 400 when quiz id is invalid', async () => {
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .get('/api/v1/admin/quizzes/invalid')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+  });
+});
+
+// ─── PUT /api/v1/admin/exhibits/:exhibit_id ────────────────────────────────────
+describe('Admin API — PUT /api/v1/admin/exhibits/:exhibit_id', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('should return 200 and updated exhibit when id is valid and update is successful', async () => {
+    prisma.exhibit.findUnique.mockResolvedValue(mockExhibit);
+    prisma.exhibit.findFirst.mockResolvedValue(null);
+    prisma.exhibit.update.mockResolvedValue({
+      ...mockExhibit,
+      name: 'Harimau Sumatra Baru',
+      zoneName: 'Zona Karnivora',
+      description: 'Deskripsi baru',
+    });
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .put('/api/v1/admin/exhibits/3')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Harimau Sumatra Baru',
+        zoneName: 'Zona Karnivora',
+        description: 'Deskripsi baru',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.name).toBe('Harimau Sumatra Baru');
+    expect(prisma.exhibit.findUnique).toHaveBeenCalledWith({ where: { id: 3 } });
+    expect(prisma.exhibit.update).toHaveBeenCalledWith({
+      where: { id: 3 },
+      data: {
+        name: 'Harimau Sumatra Baru',
+        zoneName: 'Zona Karnivora',
+        description: 'Deskripsi baru',
+      },
+      select: expect.any(Object),
+    });
+  });
+
+  it('should return 409 when the new name is already registered by another exhibit', async () => {
+    prisma.exhibit.findUnique.mockResolvedValue(mockExhibit);
+    prisma.exhibit.findFirst.mockResolvedValue({ id: 5, name: 'Harimau Sumatra Baru' });
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .put('/api/v1/admin/exhibits/3')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Harimau Sumatra Baru',
+        zoneName: 'Zona Karnivora',
+        description: 'Deskripsi baru',
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('CONFLICT');
+    expect(prisma.exhibit.update).not.toHaveBeenCalled();
+  });
+
+  it('should return 404 when exhibit id does not exist', async () => {
+    prisma.exhibit.findUnique.mockResolvedValue(null);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .put('/api/v1/admin/exhibits/999')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Harimau Sumatra Baru',
+        zoneName: 'Zona Karnivora',
+        description: 'Deskripsi baru',
+      });
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('EXHIBIT_NOT_FOUND');
+  });
+
+  it('should return 400 when exhibit id is invalid', async () => {
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .put('/api/v1/admin/exhibits/invalid')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Harimau Sumatra Baru',
+        zoneName: 'Zona Karnivora',
+        description: 'Deskripsi baru',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('should return 403 when visitor tries to update exhibit', async () => {
+    const token = generateTestToken(1, 'VISITOR');
+    const res = await request(app)
+      .put('/api/v1/admin/exhibits/3')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Harimau Sumatra Baru',
+        zoneName: 'Zona Karnivora',
+        description: 'Deskripsi baru',
+      });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+});
+
+// ─── DELETE /api/v1/admin/content/:id ──────────────────────────────────────────
+describe('Admin API — DELETE /api/v1/admin/content/:id', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('should return 200 and success message when id is valid and deleted successfully', async () => {
+    prisma.learningPathContent.findUnique.mockResolvedValue(mockContent);
+    prisma.learningPathContent.delete.mockResolvedValue(mockContent);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .delete('/api/v1/admin/content/1')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.message).toBe('Materi edukasi berhasil dihapus');
+    expect(prisma.learningPathContent.findUnique).toHaveBeenCalledWith({ where: { id: 1 } });
+    expect(prisma.learningPathContent.delete).toHaveBeenCalledWith({ where: { id: 1 } });
+  });
+
+  it('should return 404 when content id does not exist', async () => {
+    prisma.learningPathContent.findUnique.mockResolvedValue(null);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .delete('/api/v1/admin/content/999')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('CONTENT_NOT_FOUND');
+    expect(prisma.learningPathContent.delete).not.toHaveBeenCalled();
+  });
+
+  it('should return 400 when id is invalid', async () => {
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .delete('/api/v1/admin/content/invalid')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('should return 403 when visitor tries to delete content', async () => {
+    const token = generateTestToken(1, 'VISITOR');
+    const res = await request(app)
+      .delete('/api/v1/admin/content/1')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+});
+
+// ─── DELETE /api/v1/admin/media/:id ────────────────────────────────────────────
+describe('Admin API — DELETE /api/v1/admin/media/:id', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('should return 200 and success message when id is valid and deleted successfully', async () => {
+    prisma.exhibitMedia.findUnique.mockResolvedValue(mockMedia);
+    prisma.exhibitMedia.delete.mockResolvedValue(mockMedia);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .delete('/api/v1/admin/media/7')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.message).toBe('Media berhasil dihapus');
+    expect(prisma.exhibitMedia.findUnique).toHaveBeenCalledWith({ where: { id: 7 } });
+    expect(prisma.exhibitMedia.delete).toHaveBeenCalledWith({ where: { id: 7 } });
+  });
+
+  it('should return 404 when media id does not exist', async () => {
+    prisma.exhibitMedia.findUnique.mockResolvedValue(null);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .delete('/api/v1/admin/media/999')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('MEDIA_NOT_FOUND');
+    expect(prisma.exhibitMedia.delete).not.toHaveBeenCalled();
+  });
+
+  it('should return 400 when id is invalid', async () => {
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .delete('/api/v1/admin/media/invalid')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('should return 403 when visitor tries to delete media', async () => {
+    const token = generateTestToken(1, 'VISITOR');
+    const res = await request(app)
+      .delete('/api/v1/admin/media/7')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+});
+
+// ─── PUT /api/v1/admin/quizzes/:quiz_id ────────────────────────────────────────────
+describe('Admin API — PUT /api/v1/admin/quizzes/:quiz_id', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    prisma.$transaction.mockImplementation(async (cb) => {
+      return cb({
+        quiz: {
+          update: jest.fn().mockResolvedValue(mockQuiz),
+        },
+        question: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+          createMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+      });
+    });
+  });
+
+  it('should return 200 and updated data when quiz update is successful', async () => {
+    prisma.quiz.findUnique.mockResolvedValue(mockQuiz);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .put('/api/v1/admin/quizzes/10')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: 'Updated Quiz Title',
+        quizType: 'POST_ZOO',
+        scope: 'GLOBAL',
+        ageCategory: 'TEEN',
+        questions: [
+          {
+            questionText: 'Updated question?',
+            optionA: 'Opt A',
+            optionB: 'Opt B',
+            optionC: 'Opt C',
+            optionD: 'Opt D',
+            correctOption: 'A',
+            points: 10,
+          }
+        ]
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.quizId).toBe(mockQuiz.id);
+    expect(res.body.data.totalQuestionsUpdated).toBe(1);
+    expect(prisma.quiz.findUnique).toHaveBeenCalledWith({ where: { id: 10 } });
+    expect(prisma.$transaction).toHaveBeenCalled();
+  });
+
+  it('should return 404 when quiz id does not exist', async () => {
+    prisma.quiz.findUnique.mockResolvedValue(null);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .put('/api/v1/admin/quizzes/999')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: 'Updated Quiz Title',
+        quizType: 'POST_ZOO',
+        scope: 'GLOBAL',
+        ageCategory: 'TEEN',
+        questions: [
+          {
+            questionText: 'Updated question?',
+            optionA: 'Opt A',
+            optionB: 'Opt B',
+            optionC: 'Opt C',
+            optionD: 'Opt D',
+            correctOption: 'A',
+            points: 10,
+          }
+        ]
+      });
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('QUIZ_NOT_FOUND');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should return 400 when quiz_id parameter is invalid', async () => {
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .put('/api/v1/admin/quizzes/invalid')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: 'Updated Quiz Title',
+        quizType: 'POST_ZOO',
+        scope: 'GLOBAL',
+        ageCategory: 'TEEN',
+        questions: [
+          {
+            questionText: 'Updated question?',
+            optionA: 'Opt A',
+            optionB: 'Opt B',
+            optionC: 'Opt C',
+            optionD: 'Opt D',
+            correctOption: 'A',
+            points: 10,
+          }
+        ]
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('should return 403 when visitor tries to update quiz', async () => {
+    const token = generateTestToken(1, 'VISITOR');
+    const res = await request(app)
+      .put('/api/v1/admin/quizzes/10')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: 'Updated Quiz Title',
+        quizType: 'POST_ZOO',
+        scope: 'GLOBAL',
+        ageCategory: 'TEEN',
+        questions: [
+          {
+            questionText: 'Updated question?',
+            optionA: 'Opt A',
+            optionB: 'Opt B',
+            optionC: 'Opt C',
+            optionD: 'Opt D',
+            correctOption: 'A',
+            points: 10,
+          }
+        ]
+      });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+});
+
+describe('Admin API — DELETE /api/v1/admin/quizzes/:quiz_id', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('should return 200 and success message when quiz_id is valid and deleted successfully', async () => {
+    prisma.quiz.findUnique.mockResolvedValue(mockQuiz);
+    prisma.quiz.delete.mockResolvedValue(mockQuiz);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .delete('/api/v1/admin/quizzes/10')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.message).toBe('Kuis berhasil dihapus');
+    expect(prisma.quiz.findUnique).toHaveBeenCalledWith({ where: { id: 10 }, select: { id: true } });
+    expect(prisma.quiz.delete).toHaveBeenCalledWith({ where: { id: 10 } });
+  });
+
+  it('should return 404 when quiz id does not exist', async () => {
+    prisma.quiz.findUnique.mockResolvedValue(null);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .delete('/api/v1/admin/quizzes/999')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('QUIZ_NOT_FOUND');
+    expect(prisma.quiz.delete).not.toHaveBeenCalled();
+  });
+
+  it('should return 400 when quiz_id is invalid', async () => {
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .delete('/api/v1/admin/quizzes/invalid')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('should return 403 when visitor tries to delete quiz', async () => {
+    const token = generateTestToken(1, 'VISITOR');
+    const res = await request(app)
+      .delete('/api/v1/admin/quizzes/10')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+});
+
+

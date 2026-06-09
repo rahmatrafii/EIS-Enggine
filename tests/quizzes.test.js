@@ -10,7 +10,7 @@ jest.unstable_mockModule('../src/config/prisma.js', () => ({
     visitSession: { findUnique: jest.fn(), findMany: jest.fn() },
     userQuizAttempt: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
     userQuizAnswer: { createMany: jest.fn() },
-    retentionSchedule: { findMany: jest.fn() },
+    retentionSchedule: { findMany: jest.fn(), update: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
@@ -104,6 +104,50 @@ describe('Quizzes API — GET /api/v1/quizzes/fetch', () => {
     res.body.data.questions.forEach((q) => {
       expect(q.correctOption).toBeUndefined();
     });
+  });
+
+  it('should dynamically limit question counts based on age category for PRE_ZOO / POST_ZOO', async () => {
+    const questions15 = Array.from({ length: 15 }, (_, i) => ({
+      id: i + 1,
+      questionText: `Soal ${i + 1}`,
+      optionA: 'A',
+      optionB: 'B',
+      optionC: 'C',
+      optionD: 'D',
+      points: 10,
+    }));
+    // Case 1: CHILD (limit to 5)
+    prisma.visitSession.findUnique.mockResolvedValue({ userId: 1, user: { ageCategory: 'CHILD' } });
+    prisma.quiz.findFirst.mockResolvedValue({ ...mockQuizData, questions: [...questions15] });
+    let token = generateTestToken(1);
+    let res = await request(app)
+      .get('/api/v1/quizzes/fetch')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ sessionId: '1', type: 'PRE_ZOO' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.questions.length).toBe(5);
+
+    // Case 2: TEEN (limit to 8)
+    prisma.visitSession.findUnique.mockResolvedValue({ userId: 1, user: { ageCategory: 'TEEN' } });
+    prisma.quiz.findFirst.mockResolvedValue({ ...mockQuizData, questions: [...questions15] });
+    token = generateTestToken(1);
+    res = await request(app)
+      .get('/api/v1/quizzes/fetch')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ sessionId: '1', type: 'PRE_ZOO' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.questions.length).toBe(8);
+
+    // Case 3: ADULT (limit to 10)
+    prisma.visitSession.findUnique.mockResolvedValue({ userId: 1, user: { ageCategory: 'ADULT' } });
+    prisma.quiz.findFirst.mockResolvedValue({ ...mockQuizData, questions: [...questions15] });
+    token = generateTestToken(1);
+    res = await request(app)
+      .get('/api/v1/quizzes/fetch')
+      .set('Authorization', `Bearer ${token}`)
+      .query({ sessionId: '1', type: 'PRE_ZOO' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.questions.length).toBe(10);
   });
 });
 
@@ -297,5 +341,65 @@ describe('Quizzes API — GET /api/v1/quizzes/retention-status', () => {
     const res = await request(app).get('/api/v1/quizzes/retention-status');
     expect(res.status).toBe(401);
     expect(res.body.code).toBe('UNAUTHORIZED');
+  });
+
+  it('should return score for COMPLETED retention quizzes', async () => {
+    prisma.retentionSchedule.findMany.mockResolvedValue([
+      { id: 1, userId: 1, sessionId: 10, quizType: 'RETENTION_1W', status: 'COMPLETED', scheduledAt: new Date() },
+    ]);
+    prisma.userQuizAttempt.findFirst.mockResolvedValue({ finalScore: 85 });
+
+    const token = generateTestToken(1);
+    const res = await request(app)
+      .get('/api/v1/quizzes/retention-status')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].score).toBe(85);
+    expect(prisma.userQuizAttempt.findFirst).toHaveBeenCalledWith({
+      where: {
+        userId: 1,
+        sessionId: 10,
+        quiz: { quizType: 'RETENTION_1W' }
+      },
+      select: { finalScore: true, completedAt: true }
+    });
+  });
+
+  it('should generate token for active SENT retention quizzes', async () => {
+    const sentTime = new Date(); // now, not expired
+    prisma.retentionSchedule.findMany.mockResolvedValue([
+      { id: 2, userId: 1, sessionId: 10, quizType: 'RETENTION_1W', status: 'SENT', sentAt: sentTime, scheduledAt: new Date() },
+    ]);
+
+    const token = generateTestToken(1);
+    const res = await request(app)
+      .get('/api/v1/quizzes/retention-status')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].token).toBeDefined();
+    expect(res.body.data[0].status).toBe('SENT');
+  });
+
+  it('should mark SENT retention quizzes as EXPIRED if sent more than 24 hours ago', async () => {
+    const sentTime = new Date(Date.now() - 25 * 60 * 60 * 1000); // 25 hours ago, expired
+    prisma.retentionSchedule.findMany.mockResolvedValue([
+      { id: 3, userId: 1, sessionId: 10, quizType: 'RETENTION_1W', status: 'SENT', sentAt: sentTime, scheduledAt: new Date() },
+    ]);
+    prisma.retentionSchedule.update.mockResolvedValue({ status: 'EXPIRED' });
+
+    const token = generateTestToken(1);
+    const res = await request(app)
+      .get('/api/v1/quizzes/retention-status')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].status).toBe('EXPIRED');
+    expect(res.body.data[0].token).toBeUndefined();
+    expect(prisma.retentionSchedule.update).toHaveBeenCalledWith({
+      where: { id: 3 },
+      data: { status: 'EXPIRED' }
+    });
   });
 });

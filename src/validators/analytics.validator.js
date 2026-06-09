@@ -16,4 +16,17 @@ export const dashboardQuerySchema = z.object({
   }).optional()
 });
 
+export const visitorsQuerySchema = z.object({
+  date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format date_from harus YYYY-MM-DD').optional(),
+  date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format date_to harus YYYY-MM-DD').optional(),
+  age_category: z.enum(['CHILD', 'TEEN', 'ADULT'], {
+    errorMap: () => ({ message: 'Kategori umur harus berupa CHILD, TEEN, atau ADULT' })
+  }).optional()
+});
+
+export const exhibitTrendParamsSchema = z.object({
+  exhibit_id: z.coerce.number().int().positive('exhibit_id harus berupa angka positif')
+});
+
+
 

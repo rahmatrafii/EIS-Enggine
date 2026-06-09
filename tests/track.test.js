@@ -108,6 +108,7 @@ describe('Track API — POST /api/v1/track/checkin', () => {
     prisma.exhibit.findUnique.mockResolvedValue(mockExhibit);
     prisma.interaction.create.mockResolvedValue(mockInteraction);
     prisma.learningPathContent.findMany.mockResolvedValue(mockLearningContent);
+    prisma.exhibitMedia.findMany.mockResolvedValue(mockMediaList);
     prisma.quiz.findMany.mockResolvedValue([]);
 
     const token = generateTestToken(1);
@@ -119,6 +120,21 @@ describe('Track API — POST /api/v1/track/checkin', () => {
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.data.interaction.id).toBe(89);
+    expect(res.body.data.media).toEqual(mockMediaList);
+    expect(prisma.exhibitMedia.findMany).toHaveBeenCalledWith({
+      where: {
+        exhibitId: 3,
+        ageCategory: {
+          in: ['ADULT', 'ALL']
+        }
+      },
+      select: {
+        id: true,
+        mediaType: true,
+        title: true,
+        fileUrl: true
+      }
+    });
   });
 
   it('should return 201 and return existing interaction when user already checked in to same exhibit in same session', async () => {
@@ -127,6 +143,7 @@ describe('Track API — POST /api/v1/track/checkin', () => {
     prisma.exhibit.findUnique.mockResolvedValue(mockExhibit);
     prisma.interaction.findFirst.mockResolvedValue(mockInteraction);
     prisma.learningPathContent.findMany.mockResolvedValue(mockLearningContent);
+    prisma.exhibitMedia.findMany.mockResolvedValue(mockMediaList);
     prisma.quiz.findMany.mockResolvedValue([]);
 
     const token = generateTestToken(1);
@@ -137,6 +154,7 @@ describe('Track API — POST /api/v1/track/checkin', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
+    expect(res.body.data.media).toEqual(mockMediaList);
   });
 
   it('should return 404 when qr_code_identifier not found in database', async () => {

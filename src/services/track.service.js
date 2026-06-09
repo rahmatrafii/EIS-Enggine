@@ -57,6 +57,22 @@ export const checkIn = async (userId, sessionId, qrCodeIdentifier) => {
     }
   });
 
+  // 5.5 Ambil media sesuai kandang dan kategori umur (ExhibitMedia)
+  const media = await prisma.exhibitMedia.findMany({
+    where: {
+      exhibitId: exhibit.id,
+      ageCategory: {
+        in: [user.ageCategory, 'ALL']
+      }
+    },
+    select: {
+      id: true,
+      mediaType: true,
+      title: true,
+      fileUrl: true
+    }
+  });
+
   // 6. Ambil quiz khusus exhibit ini (EXHIBIT scope atau terkait exhibit) dan sesuai umur, tanpa correctOption
   const quizzes = await prisma.quiz.findMany({
     where: {
@@ -86,9 +102,11 @@ export const checkIn = async (userId, sessionId, qrCodeIdentifier) => {
       id: exhibit.id,
       name: exhibit.name,
       zoneName: exhibit.zoneName,
-      description: exhibit.description
+      description: exhibit.description,
+      imageUrl: exhibit.imageUrl
     },
     learningContents,
+    media,
     quizzes
   };
 };
@@ -193,5 +211,49 @@ export const checkOut = async (userId, interactionId) => {
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new AppError(500, 'INTERNAL_ERROR', 'Terjadi kesalahan sistem saat checkout interaksi');
+  }
+};
+
+/**
+ * Mengambil game lab interaktif untuk pengunjung yang aktif dan sesuai kategori umur.
+ * 
+ * @param {number} userId
+ * @param {number} exhibitId
+ */
+export const getLabGamesForVisitor = async (userId, exhibitId) => {
+  try {
+    // 1. Dapatkan info user untuk mengambil ageCategory
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { ageCategory: true }
+    });
+    if (!user) {
+      throw new AppError(404, 'USER_NOT_FOUND', 'User tidak ditemukan');
+    }
+
+    // 2. Ambil game lab interaktif yang cocok dan aktif
+    const games = await prisma.interactiveLabGame.findMany({
+      where: {
+        exhibitId,
+        ageCategory: {
+          in: [user.ageCategory, 'ALL']
+        },
+        isActive: true
+      },
+      select: {
+        id: true,
+        exhibitId: true,
+        ageCategory: true,
+        gameType: true,
+        title: true,
+        gameConfig: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return games;
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(500, 'INTERNAL_ERROR', 'Terjadi kesalahan sistem saat mengambil game lab pengunjung');
   }
 };

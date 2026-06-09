@@ -52,3 +52,16 @@ export const checkOut = async (req, res, next) => {
     next(error);
   }
 };
+
+export const getLabGamesForVisitor = async (req, res, next) => {
+  try {
+    const { exhibit_id } = req.query;
+    const userId = req.user.userId;
+
+    const result = await trackService.getLabGamesForVisitor(userId, Number(exhibit_id));
+
+    return sendSuccess(res, 200, result, 'Daftar game lab interaktif berhasil diambil');
+  } catch (error) {
+    next(error);
+  }
+};

@@ -14,6 +14,7 @@ enum AgeCategory {
   CHILD   // Usia 5–11 tahun
   TEEN    // Usia 12–17 tahun
   ADULT   // Usia 18 tahun ke atas
+  ALL     // Semua kalangan (semua usia)
 }
 
 enum QuizType {
@@ -45,6 +46,12 @@ enum QuizScope {
 enum UserRole {
   VISITOR
   ADMIN
+}
+
+enum LabGameType {
+  DRAG_DROP
+  MATCHING
+  PICTURE_CHOICE
 }
 
 // ─── MODELS ──────────────────────────────────────────────
@@ -80,6 +87,7 @@ model Exhibit {
   description       String?  @db.Text
   qrCodeIdentifier  String   @unique @map("qr_code_identifier") @db.VarChar(100)
   isActive          Boolean  @default(true) @map("is_active")
+  imageUrl          String?  @map("image_url") @db.Text
   createdAt         DateTime @default(now()) @map("created_at")
 
   // Relations
@@ -87,6 +95,7 @@ model Exhibit {
   learningContent    LearningPathContent[]
   quizzes            Quiz[]
   interactions       Interaction[]
+  labGames           InteractiveLabGame[]
 
   @@map("exhibits")
 }
@@ -103,6 +112,22 @@ model ExhibitMedia {
   exhibit Exhibit @relation(fields: [exhibitId], references: [id], onDelete: Cascade)
 
   @@map("exhibit_media")
+}
+
+model InteractiveLabGame {
+  id           Int         @id @default(autoincrement())
+  exhibitId    Int         @map("exhibit_id")
+  ageCategory  AgeCategory @map("age_category")
+  gameType     LabGameType @map("game_type")
+  title        String      @db.VarChar(150)
+  gameConfig   Json        @map("game_config")
+  isActive     Boolean     @default(true) @map("is_active")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  exhibit      Exhibit     @relation(fields: [exhibitId], references: [id], onDelete: Cascade)
+
+  @@map("interactive_lab_games")
 }
 
 model LearningPathContent {

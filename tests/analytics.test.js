@@ -9,18 +9,24 @@ jest.unstable_mockModule('../src/config/prisma.js', () => ({
     eisScore: {
       findUnique: jest.fn(),
       aggregate: jest.fn(),
+      groupBy: jest.fn(),
+      findMany: jest.fn(),
     },
     visitSession: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
     },
     interaction: {
       findMany: jest.fn(),
       groupBy: jest.fn(),
+      count: jest.fn(),
     },
     userQuizAttempt: {
       findMany: jest.fn(),
     },
     user: {
+      findUnique: jest.fn(),
       findMany: jest.fn(),
       count: jest.fn(),
     },
@@ -141,7 +147,18 @@ const mockDashboardData = {
 
 // ─── GET /api/v1/analytics/eis/:user_id ──────────────────────────────────────
 describe('Analytics API — GET /api/v1/analytics/eis/:user_id', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.user.findUnique.mockResolvedValue({
+      id: 1,
+      name: 'Budi Santoso',
+      email: 'budi.s@example.com',
+      age: 34,
+      ageCategory: 'ADULT',
+      registeredAt: new Date(),
+      visitSessions: []
+    });
+  });
 
   it('should return 200 and EIS score with grade and badge when user has score data', async () => {
     prisma.eisScore.findUnique.mockResolvedValue(mockEisScore);
@@ -218,6 +235,18 @@ describe('Analytics API — GET /api/v1/analytics/eis/:user_id', () => {
 
     expect(res.status).toBe(401);
     expect(res.body.code).toBe('UNAUTHORIZED');
+  });
+
+  it('should return 404 when user does not exist', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .get('/api/v1/analytics/eis/999')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('USER_NOT_FOUND');
   });
 });
 
@@ -364,6 +393,28 @@ describe('Analytics API — GET /api/v1/analytics/dashboard', () => {
         },
       });
 
+    prisma.eisScore.groupBy.mockResolvedValue([
+      { favoriteMedia: 'INTERACTIVE_LAB', _count: { favoriteMedia: 10 } }
+    ]);
+
+    prisma.visitSession.count.mockResolvedValue(8);
+
+    prisma.visitSession.findMany.mockImplementation(async (args) => {
+      if (args && args.include && args.include.user) {
+        return [
+          { id: 1, user: { id: 1, name: 'Alice' } },
+          { id: 2, user: { id: 2, name: 'Bob' } }
+        ];
+      }
+      return [{ visitDate: new Date() }];
+    });
+
+    prisma.eisScore.findMany.mockResolvedValue([
+      { finalEisScore: 75, session: { visitDate: new Date() } }
+    ]);
+
+    prisma.interaction.count.mockResolvedValue(10);
+
     prisma.interaction.groupBy.mockResolvedValue([
       { exhibitId: 3, _avg: { durationSeconds: 900 } },
       { exhibitId: 4, _avg: { durationSeconds: 720 } },
@@ -455,3 +506,78 @@ describe('Analytics API — GET /api/v1/analytics/dashboard', () => {
     expect(res.body.code).toBe('UNAUTHORIZED');
   });
 });
+
+// ─── GET /api/v1/analytics/visitors ─────────────────────────────────────────────
+describe('Analytics API — GET /api/v1/analytics/visitors', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('should return 200 and visitor list when admin accesses', async () => {
+    const mockVisitors = [
+      {
+        id: 10,
+        name: 'Budi Santoso',
+        email: 'budi.s@example.com',
+        ageCategory: 'ADULT',
+        createdAt: new Date(),
+        eisScore: { finalEisScore: 88 },
+        visitSessions: [
+          { id: 1, visitDate: new Date('2026-05-15') }
+        ]
+      }
+    ];
+
+    prisma.user.findMany.mockResolvedValue(mockVisitors);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .get('/api/v1/analytics/visitors')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].name).toBe('Budi Santoso');
+    expect(res.body.data[0].eisScore).toBe(88);
+    expect(res.body.data[0].grade).toBe('A');
+    expect(res.body.data[0].visits).toBe(1);
+    expect(prisma.user.findMany).toHaveBeenCalled();
+  });
+
+  it('should return 200 and filtered data when age_category filter is provided', async () => {
+    prisma.user.findMany.mockResolvedValue([]);
+
+    const token = generateTestToken(1, 'ADMIN');
+    const res = await request(app)
+      .get('/api/v1/analytics/visitors')
+      .query({ age_category: 'ADULT' })
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          ageCategory: 'ADULT',
+        }),
+      })
+    );
+  });
+
+  it('should return 403 when visitor role tries to access visitors list', async () => {
+    const token = generateTestToken(1, 'VISITOR');
+    const res = await request(app)
+      .get('/api/v1/analytics/visitors')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+
+  it('should return 401 when no auth token provided', async () => {
+    const res = await request(app).get('/api/v1/analytics/visitors');
+
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('UNAUTHORIZED');
+  });
+});
+

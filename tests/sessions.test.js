@@ -204,7 +204,7 @@ describe('Sessions API — POST /api/v1/sessions/end', () => {
 describe('Sessions API — GET /api/v1/sessions/history', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('should return 200 and array of session history', async () => {
+  it('should return 200 and array of session history with includes', async () => {
     prisma.visitSession.findMany.mockResolvedValue([
       {
         id: 3,
@@ -231,6 +231,25 @@ describe('Sessions API — GET /api/v1/sessions/history', () => {
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.data)).toBe(true);
     expect(res.body.data).toHaveLength(2);
+    expect(prisma.visitSession.findMany).toHaveBeenCalledWith({
+      where: { userId: 1 },
+      include: {
+        eisScore: true,
+        quizAttempts: {
+          where: {
+            quiz: {
+              quizType: {
+                in: ['PRE_ZOO', 'POST_ZOO'],
+              },
+            },
+          },
+          include: {
+            quiz: true,
+          },
+        },
+      },
+      orderBy: { checkInAt: 'desc' },
+    });
   });
 
   it('should return 200 and empty array when user has no sessions', async () => {

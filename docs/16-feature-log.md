@@ -86,6 +86,7 @@ Log ini WAJIB diperbarui status centangnya setiap kali satu fitur/endpoint per f
 | :---: | :--- | :--- | :---: |
 | ✅ | POST   | `/api/v1/admin/exhibits` | ✅ |
 | ✅ | GET    | `/api/v1/admin/exhibits` | ✅ |
+| ✅ | GET    | `/api/v1/admin/exhibits/:exhibit_id` | ✅ |
 | ✅ | DELETE | `/api/v1/admin/exhibits/:exhibit_id` | ✅ |
 | ✅ | POST   | `/api/v1/admin/content` | ✅ |
 | ✅ | POST   | `/api/v1/admin/media` | ✅ |

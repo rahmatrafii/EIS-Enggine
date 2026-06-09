@@ -130,12 +130,20 @@ export const getSessionHistory = async (userId) => {
   try {
     const sessions = await prisma.visitSession.findMany({
       where: { userId },
-      select: {
-        id: true,
-        visitDate: true,
-        checkInAt: true,
-        checkOutAt: true,
-        isCompleted: true,
+      include: {
+        eisScore: true,
+        quizAttempts: {
+          where: {
+            quiz: {
+              quizType: {
+                in: ['PRE_ZOO', 'POST_ZOO'],
+              },
+            },
+          },
+          include: {
+            quiz: true,
+          },
+        },
       },
       orderBy: { checkInAt: 'desc' },
     });

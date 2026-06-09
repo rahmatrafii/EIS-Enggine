@@ -21,3 +21,7 @@ export const labLogSchema = z.object({
 export const checkoutSchema = z.object({
   interactionId: z.number().int().positive('interactionId harus berupa angka positif')
 });
+
+export const getVisitorLabGamesQuerySchema = z.object({
+  exhibit_id: z.coerce.number().int().positive('exhibit_id harus berupa angka bulat positif')
+});
