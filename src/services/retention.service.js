@@ -4,6 +4,38 @@ import { generateRetentionToken, verifyRetentionToken } from '../utils/tokenUrl.
 import { sendEmail } from '../utils/emailSender.js';
 import { recalculateEis } from './eis.service.js';
 
+const LIMIT_BY_CATEGORY = {
+  CHILD: 5,
+  TEEN: 10,
+  ADULT: 10,
+};
+
+const getNumericSeed = (str) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return Math.abs(hash);
+};
+
+const seededRandom = (seed) => {
+  let value = seed;
+  return () => {
+    value = (value * 1664525 + 1013904223) % 4294967296;
+    return value / 4294967296;
+  };
+};
+
+const shuffleWithSeed = (array, seed) => {
+  const generator = seededRandom(seed);
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(generator() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
+
 
 /**
  * Memicu pengiriman email kuis retensi yang jatuh tempo.
@@ -41,21 +73,28 @@ export const triggerRetention = async () => {
         // 3. Generate token retensi khusus (expiry 24h)
         const token = generateRetentionToken(user.id, sessionId, quizType);
 
-        // 4. Bangun URL Aplikasi
+        // 4. Bangun URL Aplikasi (Mengarahkan ke halaman frontend /retention/[token])
         const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-        const quizUrl = `${baseUrl}/api/v1/retention/quiz/${token}`;
+        const quizUrl = `${baseUrl}/retention/${token}`;
 
-        // 5. Template HTML Email Sederhana & Kirim
+        // 5. Tentukan periode retensi berdasarkan quizType
+        const retentionPeriod = quizType === 'RETENTION_1W' ? 'H+7' : 'H+30';
+        const retentionLabel = quizType === 'RETENTION_1W' ? 'H+7 (1 Minggu)' : 'H+30 (1 Bulan)';
+
+        // 6. Template HTML Email Sederhana & Kirim
         const emailHtml = `
           <h2>Waktunya Mengingat Petualangan Anda!</h2>
           <p>Halo ${user.name}, mari uji seberapa banyak Anda mengingat hal menarik tentang fauna kebun binatang.</p>
-          <a href="${quizUrl}" style="padding:10px 15px; background:blue; color:white; text-decoration:none; border-radius:4px;">Mulai Kuis Retensi</a>
-          <p>Kuis ini hanya berlaku selama 24 Jam.</p>
+          <p>Ini adalah <strong>Kuis Retensi ${retentionLabel}</strong> setelah kunjungan terakhir Anda.</p>
+          <div style="margin: 20px 0;">
+            <a href="${quizUrl}" style="padding:10px 15px; background:blue; color:white; text-decoration:none; border-radius:4px;">Mulai Kuis Retensi</a>
+          </div>
+          <p style="color: #666; font-size: 12px;">Kuis ini hanya berlaku selama 24 Jam.</p>
         `;
 
         await sendEmail({
           to: user.email,
-          subject: 'Zoo Companion - Kuis Retensi Anda Menunggu!',
+          subject: `Zoo Companion - Kuis Retensi ${retentionPeriod} Anda Menunggu!`,
           html: emailHtml,
         });
 
@@ -160,6 +199,12 @@ export const getRetentionQuiz = async (token) => {
       throw new AppError(404, 'QUIZ_NOT_FOUND', 'Kuis retensi tidak ditemukan untuk kategori Anda');
     }
 
+    // Shuffle and slice questions deterministically
+    const limit = LIMIT_BY_CATEGORY[user.ageCategory] || 10;
+    const sortedQuestions = [...quiz.questions].sort((a, b) => a.id - b.id);
+    const seed = getNumericSeed(`${userId}-${sessionId}`);
+    quiz.questions = shuffleWithSeed(sortedQuestions, seed).slice(0, limit);
+
     return quiz;
   } catch (error) {
     if (error instanceof AppError) throw error;
@@ -236,7 +281,13 @@ export const submitRetentionQuiz = async (token, answersPayload) => {
       throw new AppError(404, 'QUIZ_NOT_FOUND', 'Kuis retensi tidak ditemukan untuk kategori Anda');
     }
 
-    const totalQuestions = quiz.questions.length;
+    // Shuffle and slice questions deterministically (must match getRetentionQuiz exactly)
+    const limit = LIMIT_BY_CATEGORY[user.ageCategory] || 10;
+    const sortedQuestions = [...quiz.questions].sort((a, b) => a.id - b.id);
+    const seed = getNumericSeed(`${userId}-${sessionId}`);
+    const selectedQuestions = shuffleWithSeed(sortedQuestions, seed).slice(0, limit);
+
+    const totalQuestions = selectedQuestions.length;
     if (totalQuestions === 0) {
       throw new AppError(400, 'BAD_REQUEST', 'Kuis tidak memiliki pertanyaan');
     }
@@ -244,7 +295,7 @@ export const submitRetentionQuiz = async (token, answersPayload) => {
     // 5. Lakukan logika koreksi array answersPayload yang dikirim user
     let correctCount = 0;
     const returnedAnswers = answersPayload.map(userAns => {
-      const dbQuestion = quiz.questions.find(q => q.id === userAns.questionId);
+      const dbQuestion = selectedQuestions.find(q => q.id === userAns.questionId);
       const isCorrect = dbQuestion && (dbQuestion.correctOption === userAns.chosenOption);
       
       if (isCorrect) {
