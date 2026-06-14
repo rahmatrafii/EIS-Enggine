@@ -145,6 +145,53 @@ describe('Retention API — POST /api/v1/retention/trigger', () => {
     expect(res.status).toBe(401);
   });
 
+  it('should return 200 on GET /trigger when x-cron-secret is valid', async () => {
+    prisma.retentionSchedule.findMany.mockResolvedValue([mockPendingSchedule]);
+    prisma.retentionSchedule.update.mockResolvedValue(mockSentSchedule);
+
+    const res = await request(app)
+      .get('/api/v1/retention/trigger')
+      .set('x-cron-secret', 'test_cron_secret');
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(prisma.retentionSchedule.findMany).toHaveBeenCalled();
+  });
+
+  it('should return 200 on GET /trigger when Authorization Bearer is valid', async () => {
+    const originalSecret = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = 'test_vercel_cron_secret';
+    prisma.retentionSchedule.findMany.mockResolvedValue([mockPendingSchedule]);
+    prisma.retentionSchedule.update.mockResolvedValue(mockSentSchedule);
+
+    try {
+      const res = await request(app)
+        .get('/api/v1/retention/trigger')
+        .set('Authorization', 'Bearer test_vercel_cron_secret');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(prisma.retentionSchedule.findMany).toHaveBeenCalled();
+    } finally {
+      process.env.CRON_SECRET = originalSecret;
+    }
+  });
+
+  it('should return 401 on GET /trigger when Authorization Bearer is invalid', async () => {
+    const originalSecret = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = 'test_vercel_cron_secret';
+
+    try {
+      const res = await request(app)
+        .get('/api/v1/retention/trigger')
+        .set('Authorization', 'Bearer wrong_vercel_cron_secret');
+
+      expect(res.status).toBe(401);
+    } finally {
+      process.env.CRON_SECRET = originalSecret;
+    }
+  });
+
   it('should return 200 even when no pending schedules exist (empty array)', async () => {
     prisma.retentionSchedule.findMany.mockResolvedValue([]);
 

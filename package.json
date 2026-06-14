@@ -9,6 +9,7 @@
   "scripts": {
     "test": "NODE_OPTIONS=\"--experimental-vm-modules --localstorage-file=.localstorage\" jest",
     "dev": "nodemon server.js",
+    "build": "prisma generate",
     "test:watch": "NODE_OPTIONS=\"--experimental-vm-modules --localstorage-file=.localstorage\" jest --watch",
     "test:coverage": "NODE_OPTIONS=\"--experimental-vm-modules --localstorage-file=.localstorage\" jest --coverage"
   },

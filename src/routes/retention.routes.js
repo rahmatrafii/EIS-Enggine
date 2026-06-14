@@ -10,15 +10,18 @@ import {
 
 const router = Router();
 
-// POST /api/v1/retention/trigger
-// Dilindungi cronAuth middleware (bukan JWT) — cek header x-cron-secret
-// Menggunakan validate middleware dengan req.body kosong
-router.post(
-  '/trigger',
-  requireCronSecret,
-  validate(triggerRetentionSchema),
-  retentionController.triggerRetention
-);
+// POST & GET /api/v1/retention/trigger
+// Dilindungi cronAuth middleware (bukan JWT) — cek header x-cron-secret atau Authorization Bearer
+router.route('/trigger')
+  .post(
+    requireCronSecret,
+    validate(triggerRetentionSchema),
+    retentionController.triggerRetention
+  )
+  .get(
+    requireCronSecret,
+    retentionController.triggerRetention
+  );
 
 // GET /api/v1/retention/quiz/:token
 // Tanpa JWT auth — autentikasi via retention token di URL params
